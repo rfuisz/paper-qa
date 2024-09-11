@@ -65,7 +65,7 @@ class LiteLLMEmbeddingModel(EmbeddingModel):
     embedding_kwargs: dict = Field(default_factory=dict)
 
     async def embed_documents(
-        self, texts: list[str], batch_size: int = 16
+        self, texts: list[str], batch_size: int = 8
     ) -> list[list[float]]:
         N = len(texts)
         embeddings = []
