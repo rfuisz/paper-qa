@@ -13,6 +13,7 @@ from paperqa.docs import Docs
 from paperqa.llms import EmbeddingModel, LiteLLMModel
 from paperqa.settings import Settings
 from paperqa.types import Answer
+from paperscraper import a_search_papers
 
 from .search import get_directory_index
 
@@ -55,17 +56,22 @@ class NamedTool(BaseModel):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
 async def get_paper_scraper_papers(query: str,years = None, limit = 10) -> None:
-    logger.info(f"installing paper-scraper")
-    from paperscraper import a_search_papers
     logger.info(f"Trying to get papers with paper-scraper for {query!r}")
+    # Determine the appropriate pdir value
+    current_dir = os.path.basename(os.getcwd())
+    if current_dir == 'downloaded_papers':
+        pdir = '.'
+    else:
+        pdir = 'downloaded_papers'
     try:
         papers = await a_search_papers(
                     query,
                     # year=years, # e.g. "2010-2025" or "2024"
                     limit=limit,
                     semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY"),
-                    pdir='downloaded_papers')
-        logger.info(f"Paper search for {query!r} returned {len(papers)} papers.")
+                    pdir=pdir,
+        )
+        logger.info(f"Paper Downloading Search for {query!r} returned {len(papers)} papers.")
     except Exception as e:
         logger.error(f"Error getting papers with paper-scraper: {e}")
     
