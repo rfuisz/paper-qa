@@ -131,8 +131,8 @@ class PaperSearch(NamedTool):
         attempts = 0
         max_attempts = 5
         # logger.info(f"Found {len(results)} results! Finding more papers for {query!r} using paper-scraper")
-        while len(results) < 3 and attempts < max_attempts:
-            logger.info(f"only {results!r} results! Finding more papers for {query!r} using paper-scraper")
+        while len(results) < 30 and attempts < max_attempts:
+            logger.info(f"only {len(results)!r} results! Finding more papers for {query!r} using paper-scraper")
             await get_paper_scraper_papers(query, limit=attempts*10)  # Increase limit to get more papers
             
             # Re-query the index after adding new papers
