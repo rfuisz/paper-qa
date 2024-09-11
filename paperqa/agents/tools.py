@@ -124,7 +124,6 @@ class PaperSearch(NamedTool):
         except KeyError:
             offset = self.previous_searches[search_key] = 0
 
-        logger.info(f"Searching for {query!r} with offset {offset}")
         index = await get_directory_index(settings=self.settings)
         results = await index.query(
             query,
@@ -142,6 +141,13 @@ class PaperSearch(NamedTool):
             await get_paper_scraper_papers(query, limit=attempts*10)  # Increase limit to get more papers
             
             # Re-query the index after adding new papers
+            search_key = query, year
+            try:
+                offset = self.previous_searches[search_key]
+            except KeyError:
+                offset = self.previous_searches[search_key] = 0
+                
+            index = await get_directory_index(settings=self.settings)
             results = await index.query(
                 query,
                 top_n=self.settings.agent.search_count,
