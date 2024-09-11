@@ -3,6 +3,7 @@
 import inspect
 import logging
 import re
+import os
 import sys
 from typing import ClassVar
 
@@ -14,6 +15,7 @@ from paperqa.settings import Settings
 from paperqa.types import Answer
 
 from .search import get_directory_index
+
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,21 @@ class NamedTool(BaseModel):
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
+async def get_paper_scraper_papers(query: str,years = None, settings: Settings = Settings(pdir='downloaded_papers')) -> None:
+    logger.info(f"installing paper-scraper")
+    from paperscraper import a_search_papers
+    logger.info(f"Trying to get papers with paper-scraper for {query!r}")
+    try:
+        papers = await a_search_papers(
+                    query,
+                    # year=years, # e.g. "2010-2025" or "2024"
+                    limit=settings.agent.search_count,
+                    semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY"),
+                    pdir='downloaded_papers')
+        logger.info(f"Paper search for {query!r} returned {len(papers)} papers.")
+    except Exception as e:
+        logger.error(f"Error getting papers with paper-scraper: {e}")
+    
 
 class PaperSearch(NamedTool):
     TOOL_FN_NAME = "paper_search"
@@ -100,6 +117,9 @@ class PaperSearch(NamedTool):
             offset = self.previous_searches[search_key]
         except KeyError:
             offset = self.previous_searches[search_key] = 0
+        logger.info(f"Starting paper search for {query!r} using paper-scraper")
+
+        await get_paper_scraper_papers(query,self.settings)
 
         logger.info(f"Starting paper search for {query!r}.")
         index = await get_directory_index(settings=self.settings)
