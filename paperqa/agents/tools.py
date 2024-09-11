@@ -54,7 +54,7 @@ class NamedTool(BaseModel):
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
-async def get_paper_scraper_papers(query: str,years = None, settings: Settings = Settings(pdir='downloaded_papers')) -> None:
+async def get_paper_scraper_papers(query: str,years = None, limit = 10) -> None:
     logger.info(f"installing paper-scraper")
     from paperscraper import a_search_papers
     logger.info(f"Trying to get papers with paper-scraper for {query!r}")
@@ -62,7 +62,7 @@ async def get_paper_scraper_papers(query: str,years = None, settings: Settings =
         papers = await a_search_papers(
                     query,
                     # year=years, # e.g. "2010-2025" or "2024"
-                    limit=settings.agent.search_count,
+                    limit=limit,
                     semantic_scholar_api_key=os.environ.get("SEMANTIC_SCHOLAR_API_KEY"),
                     pdir='downloaded_papers')
         logger.info(f"Paper search for {query!r} returned {len(papers)} papers.")
@@ -117,11 +117,8 @@ class PaperSearch(NamedTool):
             offset = self.previous_searches[search_key]
         except KeyError:
             offset = self.previous_searches[search_key] = 0
-        logger.info(f"Starting paper search for {query!r} using paper-scraper")
 
-        await get_paper_scraper_papers(query,self.settings)
-
-        logger.info(f"Starting paper search for {query!r}.")
+        logger.info(f"Searching for {query!r} with offset {offset}")
         index = await get_directory_index(settings=self.settings)
         results = await index.query(
             query,
@@ -129,6 +126,32 @@ class PaperSearch(NamedTool):
             offset=offset,
             field_subset=[f for f in index.fields if f != "year"],
         )
+        
+        ## if less than 3 papers, use paper-scraper
+        attempts = 0
+        max_attempts = 5
+        # logger.info(f"Found {len(results)} results! Finding more papers for {query!r} using paper-scraper")
+        while len(results) < 3 and attempts < max_attempts:
+            logger.info(f"only {results!r} results! Finding more papers for {query!r} using paper-scraper")
+            await get_paper_scraper_papers(query, limit=attempts*10)  # Increase limit to get more papers
+            
+            # Re-query the index after adding new papers
+            results = await index.query(
+                query,
+                top_n=self.settings.agent.search_count,
+                offset=offset,
+                field_subset=[f for f in index.fields if f != "year"],
+            )
+            
+            attempts += 1
+            
+            if len(results) == 0:
+                logger.info(f"No results found after attempt {attempts}. Retrying...")
+        
+        if len(results) == 0:
+            logger.warning(f"Failed to find relevant papers after {max_attempts} attempts.")
+
+
         logger.info(
             f"{self.TOOL_FN_NAME} for query {query!r} returned {len(results)} papers."
         )
