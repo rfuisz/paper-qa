@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from pydoc import locate
 from typing import TYPE_CHECKING, Any, cast
 
-from aviary.message import Message
+from aviary.message import MalformedMessageError, Message
 from aviary.tools import (
     Tool,
     ToolCall,
@@ -14,6 +14,12 @@ from aviary.tools import (
     ToolSelector,
 )
 from pydantic import BaseModel, Field, TypeAdapter
+from tenacity import (
+    Retrying,
+    before_sleep_log,
+    retry_if_exception_type,
+    stop_after_attempt,
+)
 
 try:
     from ldp.agent import (
@@ -58,7 +64,6 @@ async def agent_query(
     query: str | QueryRequest,
     docs: Docs | None = None,
     agent_type: str | type = DEFAULT_AGENT_TYPE,
-    verbosity: int = 0,
     **env_kwargs,
 ) -> AnswerResponse:
     if isinstance(query, str):
@@ -75,12 +80,8 @@ async def agent_query(
 
     response = await run_agent(docs, query, agent_type, **env_kwargs)
     agent_logger.debug(f"agent_response: {response}")
-    truncation_chars = 1_000_000 if verbosity > 1 else 1500 * (verbosity + 1)
-    agent_logger.info(
-        f"[bold blue]Answer: {response.answer.answer[:truncation_chars]}"
-        f"{'...(truncated)' if len(response.answer.answer) > truncation_chars else ''}"
-        "[/bold blue]"
-    )
+
+    agent_logger.info(f"[bold blue]Answer: {response.answer.answer}[/bold blue]")
 
     await search_index.add_document(
         {
@@ -317,7 +318,14 @@ async def run_aviary_agent(
 
             while not done:
                 agent_state.messages += obs
-                action = await agent(agent_state.messages, tools)
+                for attempt in Retrying(
+                    stop=stop_after_attempt(5),
+                    retry=retry_if_exception_type(MalformedMessageError),
+                    before_sleep=before_sleep_log(logger, logging.WARNING),
+                    reraise=True,
+                ):
+                    with attempt:  # Retrying if ToolSelector fails to select a tool
+                        action = await agent(agent_state.messages, tools)
                 agent_state.messages = [*agent_state.messages, action]
                 if on_agent_action_callback:
                     await on_agent_action_callback(action, agent_state)
